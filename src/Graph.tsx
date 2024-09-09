@@ -14,7 +14,7 @@ interface IProps {
  * Perspective library adds load to HTMLElement prototype.
  * This interface acts as a wrapper for Typescript compiler.
  */
-interface PerspectiveViewerElement {
+interface PerspectiveViewerElement extends HTMLElement {
   load: (table: Table) => void,
 }
 
@@ -45,27 +45,45 @@ class Graph extends Component<IProps, {}> {
       this.table = window.perspective.worker().table(schema);
     }
     if (this.table) {
-      // Load the `table` in the `<perspective-viewer>` DOM reference.
-
       // Add more Perspective configurations here.
       elem.load(this.table);
+
+      // Add Perspective configurations to visualize data.
+      elem.setAttribute('view', 'y_line');
+      elem.setAttribute('column-pivots', '["stock"]');
+      elem.setAttribute('row-pivots', '["timestamp"]');
+      elem.setAttribute('columns', '["top_ask_price"]');
+      elem.setAttribute('aggregates', JSON.stringify({
+        stock: 'distinct count',
+        top_ask_price: 'avg',
+        top_bid_price: 'avg',
+        timestamp: 'distinct count'
+      }));
     }
   }
 
   componentDidUpdate() {
     // Everytime the data props is updated, insert the data into Perspective table
     if (this.table) {
-      // As part of the task, you need to fix the way we update the data props to
-      // avoid inserting duplicated entries into Perspective table again.
-      this.table.update(this.props.data.map((el: any) => {
-        // Format the data from ServerRespond to the schema
-        return {
-          stock: el.stock,
-          top_ask_price: el.top_ask && el.top_ask.price || 0,
-          top_bid_price: el.top_bid && el.top_bid.price || 0,
-          timestamp: el.timestamp,
-        };
-      }));
+      // Handle duplicated data and aggregate
+      const uniqueData = this.props.data.reduce((acc: any[], el: any) => {
+        const existing = acc.find((item: any) => item.stock === el.stock && item.timestamp === el.timestamp);
+        if (existing) {
+          existing.top_ask_price = (existing.top_ask_price + (el.top_ask ? el.top_ask.price : 0)) / 2;
+          existing.top_bid_price = (existing.top_bid_price + (el.top_bid ? el.top_bid.price : 0)) / 2;
+        } else {
+          acc.push({
+            stock: el.stock,
+            top_ask_price: el.top_ask && el.top_ask.price || 0,
+            top_bid_price: el.top_bid && el.top_bid.price || 0,
+            timestamp: el.timestamp,
+          });
+        }
+        return acc;
+      }, []);
+
+      // Update the Perspective table with unique data
+      this.table.update(uniqueData);
     }
   }
 }
